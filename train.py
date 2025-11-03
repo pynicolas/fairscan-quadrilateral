@@ -7,6 +7,7 @@ import cv2
 import glob
 import os
 import shutil
+import time
 
 from model import QuadRegressorLite
 
@@ -85,6 +86,7 @@ criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
 for epoch in range(EPOCHS):
+    start_time = time.time()
     model.train()
     total_loss = 0
     for x, y in train_loader:
@@ -95,7 +97,8 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * x.size(0)
-    print(f"Epoch {epoch}: train_loss={total_loss / len(train_ds):.5f}")
+    elapsed_time = time.time() - start_time
+    print(f"Epoch {epoch}: train_loss={total_loss / len(train_ds):.5f}, time={elapsed_time:.1f}s")
 
 torch.save(model.state_dict(), MODEL_FILE_PATH)
 

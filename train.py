@@ -15,7 +15,9 @@ QUAD_DATASET_PATH = "dataset/quad_dataset"
 BUILD_DIR = "build"
 MODEL_FILE_PATH = f"{BUILD_DIR}/fairscan-quadrilateral.pt"
 TFLITE_MODEL_FILE_PATH = f"{BUILD_DIR}/fairscan-quadrilateral.tflite"
-EPOCHS = 25
+EPOCHS = 30
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 if os.path.isdir(BUILD_DIR):
     shutil.rmtree(BUILD_DIR)
@@ -72,6 +74,16 @@ class QuadDataset(Dataset):
         points = points.reshape(-1)
         return torch.tensor(mask), torch.tensor(points, dtype=torch.float32)
 
+def evaluate(model, loader, criterion):
+    model.eval()
+    total_loss = 0.0
+    with torch.no_grad():
+        for x, y in loader:
+            x, y = x.to(DEVICE), y.to(DEVICE)
+            pred = model(x)
+            loss = criterion(pred, y.view(y.size(0), -1))
+            total_loss += loss.item() * x.size(0)
+    return total_loss / len(loader.dataset)
 
 train_ds = QuadDataset(f"{QUAD_DATASET_PATH}/train")
 val_ds = QuadDataset(f"{QUAD_DATASET_PATH}/val")
@@ -79,34 +91,39 @@ val_ds = QuadDataset(f"{QUAD_DATASET_PATH}/val")
 train_loader = torch.utils.data.DataLoader(train_ds, batch_size=32, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_ds, batch_size=32)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = QuadRegressorLite().to(device)
+model = QuadRegressorLite().to(DEVICE)
 
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
+best_val_loss = float("inf")
+best_state = None
 
 for epoch in range(EPOCHS):
     start_time = time.time()
     model.train()
     total_loss = 0
     for x, y in train_loader:
-        x, y = x.to(device), y.to(device)
+        x, y = x.to(DEVICE), y.to(DEVICE)
         optimizer.zero_grad()
         pred = model(x)
         loss = criterion(pred, y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * x.size(0)
+    val_loss = evaluate(model, val_loader, criterion)
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        best_state = model.state_dict()
     elapsed_time = time.time() - start_time
-    print(f"Epoch {epoch}: train_loss={total_loss / len(train_ds):.5f}, time={elapsed_time:.1f}s")
+    print(f"Epoch {epoch}: train_loss={total_loss / len(train_ds):.5f}, val_loss={val_loss:.5f}, time={elapsed_time:.1f}s")
 
-torch.save(model.state_dict(), MODEL_FILE_PATH)
+torch.save(best_state, MODEL_FILE_PATH)
 
 # Convert to TFLite
 
 import ai_edge_torch
 
-model = QuadRegressorLite().to(device)
+model = QuadRegressorLite().to(DEVICE)
 model.load_state_dict(torch.load(MODEL_FILE_PATH, map_location="cpu"))
 
 sample_inputs = (torch.randn(1, 1, 256, 256),)

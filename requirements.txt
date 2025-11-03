@@ -1,0 +1,5 @@
+numpy
+torch
+ai-edge-torch-nightly
+tf_nightly
+opencv-python

@@ -57,22 +57,24 @@ def load_quad_from_txt(txt_path):
 
 class QuadDataset(Dataset):
     def __init__(self, folder):
-        self.masks = sorted(glob.glob(os.path.join(folder, "*.png")))
+        self.masks = sorted(glob.glob(os.path.join(folder, "*.npy")))
 
     def __len__(self):
         return len(self.masks)
 
     def __getitem__(self, idx):
         mask_path = self.masks[idx]
-        pts_path = mask_path.replace(".png", ".txt")
+        pts_path = mask_path.replace(".npy", ".txt")
 
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-        mask = cv2.resize(mask, (256, 256)).astype(np.float32) / 255.0
+        mask = np.load(mask_path).astype(np.float32)
+        mask = cv2.resize(mask, (256, 256))
         mask = np.expand_dims(mask, 0)  # (1, 256, 256)
 
         points = load_quad_from_txt(pts_path)
         points = points.reshape(-1)
+
         return torch.tensor(mask), torch.tensor(points, dtype=torch.float32)
+
 
 def evaluate(model, loader, criterion):
     model.eval()
@@ -117,6 +119,7 @@ for epoch in range(EPOCHS):
     elapsed_time = time.time() - start_time
     print(f"Epoch {epoch}: train_loss={total_loss / len(train_ds):.5f}, val_loss={val_loss:.5f}, time={elapsed_time:.1f}s")
 
+print(f"Best validation loss: {best_val_loss:.5f}")
 torch.save(best_state, MODEL_FILE_PATH)
 
 # Convert to TFLite

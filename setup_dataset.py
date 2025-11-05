@@ -3,8 +3,7 @@ import os
 import shutil
 import zipfile
 import numpy as np
-from PIL import Image
-from PIL import ImageOps
+from PIL import Image, ImageOps, ImageFilter
 import tensorflow as tf
 from urllib.request import urlretrieve
 
@@ -25,13 +24,12 @@ def preprocess_image(img: Image.Image) -> np.ndarray:
     img = img.convert("RGB").resize((INPUT_WIDTH, INPUT_HEIGHT), Image.BILINEAR)
     img_np = np.asarray(img).astype(np.float32)
     img_np = (img_np - 127.5) / 127.5  # Normalize to [-1, 1]
-    return np.expand_dims(img_np, axis=0)  # Shape: (1, 256, 256, 3)
+    return np.expand_dims(img_np, axis=0)
 
-def postprocess_output(output: np.ndarray) -> Image.Image:
-    output = np.squeeze(output)  # Shape: (256, 256)
+def postprocess_output(output: np.ndarray) -> np.ndarray:
+    output = np.squeeze(output).astype(np.float32)  # Shape: (256, 256)
     output = np.clip(output, 0, 1)
-    output = (output * 255).astype(np.uint8)
-    return Image.fromarray(output, mode="L")  # "L" = 8-bit grayscale
+    return output  # float32 array, values in [0,1]
 
 def generate_segmentation_mask(image_path, output_dir):
     img = Image.open(image_path).convert("RGB")
@@ -42,8 +40,11 @@ def generate_segmentation_mask(image_path, output_dir):
     interpreter.invoke()
     output_tensor = interpreter.get_tensor(output_details['index'])
 
-    mask = postprocess_output(output_tensor)
-    mask.save(output_dir / (image_path.stem + ".png"))
+    mask_np = postprocess_output(output_tensor)
+
+    # Save both float (for training) and visual preview
+    np.save(output_dir / (image_path.stem + ".npy"), mask_np)
+    Image.fromarray((mask_np * 255).astype(np.uint8)).save(output_dir / (image_path.stem + ".png"))
 
 print('Prepare dataset directory...')
 if os.path.isdir(DATASET_TOP_DIR):

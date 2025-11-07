@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import torch
 from torch.utils.data import Dataset
 import torch.nn as nn
